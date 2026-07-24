@@ -1,0 +1,27 @@
+# CPU-only / offline development override.
+#
+# Usage:
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Replaces the GPU/HuggingFace-dependent TEI and vLLM services with lightweight
+# mock stand-ins (see ./mocks). Qdrant and the backend are unchanged — this is
+# a genuine end-to-end run of the real backend against a real Qdrant, with only
+# the two ML services mocked. No GPU, no model downloads.
+
+services:
+  tei-embedding-service:
+    image: ""
+    build:
+      context: ./mocks
+    environment:
+      - SERVICE=tei
+    command: ["uvicorn", "mock_tei:app", "--host", "0.0.0.0", "--port", "80"]
+
+  vllm-generation:
+    image: ""
+    build:
+      context: ./mocks
+    environment:
+      - SERVICE=vllm
+    command: ["uvicorn", "mock_vllm:app", "--host", "0.0.0.0", "--port", "8000"]
+    deploy: {}

@@ -1,0 +1,76 @@
+version: '3.8'
+
+# Hospital Clinical Knowledge Assistant — finalized self-hosted stack (PRODUCTION).
+# Bring up everything with: docker compose up -d
+#
+# NOTE: vllm-generation requires an NVIDIA GPU host with the nvidia container
+# runtime configured, and both TEI and vLLM download model weights from
+# Hugging Face on first boot. For a CPU-only / offline dev box, use the mock
+# override instead:
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: clinical_qdrant
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  tei-embedding-service:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: clinical_tei_embedding
+    environment:
+      - MODEL_ID=BAAI/bge-m3
+      - MAX_CONCURRENT_REQUESTS=128
+    volumes:
+      - tei_model_cache:/data
+    ports:
+      - "8080:80"
+    command: --model-id BAAI/bge-m3 --auto-truncate
+    restart: always
+
+  vllm-generation:
+    image: vllm/vllm-openai:latest
+    container_name: clinical_vllm
+    environment:
+      - MODEL=meta-llama/Meta-Llama-3-8B-Instruct
+    volumes:
+      - vllm_model_cache:/root/.cache/huggingface
+    ports:
+      - "8001:8000"
+    command: --model meta-llama/Meta-Llama-3-8B-Instruct --max-model-len 8192
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    container_name: clinical_backend
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - TEI_EMBEDDING_URL=http://tei-embedding-service:80
+      - VLLM_BASE_URL=http://vllm-generation:8000/v1
+      - VLLM_MODEL_NAME=meta-llama/Meta-Llama-3-8B-Instruct
+    ports:
+      - "8000:8000"
+    depends_on:
+      - qdrant
+      - tei-embedding-service
+      - vllm-generation
+    restart: always
+
+volumes:
+  qdrant_data:
+  tei_model_cache:
+  vllm_model_cache:
