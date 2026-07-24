@@ -5,8 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
-COPY qdrant_init.py .
+COPY main.py qdrant_init.py bootstrap.py ./
 
 EXPOSE 8000
 

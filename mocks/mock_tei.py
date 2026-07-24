@@ -36,6 +36,7 @@ TOPIC_KEYWORDS = {
     "anticoagulation": {"warfarin", "ibuprofen", "nsaid", "nsaids", "anticoagulant", "anticoagulated", "bleeding", "acetaminophen"},
     "airway": {"airway", "intubation", "intubate", "ventilation", "oxygen", "rsi"},
     "cardiac": {"stemi", "troponin", "chest", "aspirin", "mi", "myocardial", "ischemia"},
+    "anaphylaxis": {"anaphylaxis", "epinephrine", "allergic", "allergy", "intramuscular", "adrenaline"},
 }
 
 

@@ -57,14 +57,13 @@ docker-compose.dev.yml     CPU/offline override (mock TEI + vLLM)
 
 ### Option A — CPU / offline (mock ML services, no GPU)
 
-Runs the **real** backend + **real** Qdrant with lightweight mock TEI/vLLM so you can exercise the full pipeline on any laptop.
+Runs the **real** backend + **real** Qdrant with lightweight mock TEI/vLLM so you can exercise the full pipeline on any laptop. The stack is self-seeding — an `init` service creates the collection and loads sample SOPs automatically.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-# then, once up:
-docker compose exec backend python qdrant_init.py
-docker compose exec backend python /app/../scripts/ingest_sample.py   # or run scripts/ingest_sample.py on the host
+docker compose -f docker-compose.dev.yml up --build
 ```
+
+See **[docs/TESTING.md](docs/TESTING.md)** for a full walkthrough (curl examples, expected output, and the UI test).
 
 Or without Docker at all:
 

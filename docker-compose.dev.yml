@@ -1,27 +1,68 @@
-# CPU-only / offline development override.
+# CPU-only / offline DEV stack — standalone, self-seeding. No GPU, no model
+# downloads. Brings up Qdrant + mock TEI + mock vLLM + the real backend, seeds
+# sample clinical SOPs, and exposes the API on http://localhost:8000.
 #
-# Usage:
-#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#     docker compose -f docker-compose.dev.yml up --build
 #
-# Replaces the GPU/HuggingFace-dependent TEI and vLLM services with lightweight
-# mock stand-ins (see ./mocks). Qdrant and the backend are unchanged — this is
-# a genuine end-to-end run of the real backend against a real Qdrant, with only
-# the two ML services mocked. No GPU, no model downloads.
+# (For the real BGE-M3 + Llama 3 GPU stack, use docker-compose.yml instead.)
 
 services:
-  tei-embedding-service:
-    image: ""
-    build:
-      context: ./mocks
-    environment:
-      - SERVICE=tei
-    command: ["uvicorn", "mock_tei:app", "--host", "0.0.0.0", "--port", "80"]
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: clinical_qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
 
-  vllm-generation:
-    image: ""
+  mock-tei:
     build:
       context: ./mocks
+    container_name: clinical_mock_tei
+    command: ["uvicorn", "mock_tei:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+
+  mock-vllm:
+    build:
+      context: ./mocks
+    container_name: clinical_mock_vllm
+    command: ["uvicorn", "mock_vllm:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
+
+  # One-shot: waits for qdrant + tei, creates the collection, seeds sample SOPs.
+  init:
+    build:
+      context: ./backend
+    container_name: clinical_init
+    command: ["python", "bootstrap.py"]
     environment:
-      - SERVICE=vllm
-    command: ["uvicorn", "mock_vllm:app", "--host", "0.0.0.0", "--port", "8000"]
-    deploy: {}
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - TEI_EMBEDDING_URL=http://mock-tei:8080
+      - EMBEDDING_DIM=1024
+    depends_on:
+      - qdrant
+      - mock-tei
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: clinical_backend
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - TEI_EMBEDDING_URL=http://mock-tei:8080
+      - VLLM_BASE_URL=http://mock-vllm:8001/v1
+      - VLLM_MODEL_NAME=mock-llama-3
+    ports:
+      - "8000:8000"
+    depends_on:
+      - qdrant
+      - mock-tei
+      - mock-vllm
+
+volumes:
+  qdrant_data:
