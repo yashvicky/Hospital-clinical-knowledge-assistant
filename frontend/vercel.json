@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "installCommand": "npm ci",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://your-backend-host.example.com/api/v1/query"
+  }
+}

@@ -32,9 +32,9 @@ If retrieval returns nothing, the API returns `"Information not found in approve
 | Layer | Choice |
 | --- | --- |
 | Embedding model | `BGE-M3` (BAAI) via Hugging Face **TEI**, 1024-dim |
-| Vector database | **Qdrant** (cosine distance) |
+| Vector database | **Qdrant** — hybrid search (dense cosine + sparse lexical, RRF fusion) |
 | Generative LLM | **Llama 3** (8B/70B) served by **vLLM** (OpenAI-compatible API) |
-| Orchestration | **FastAPI** + LlamaIndex |
+| Orchestration | **FastAPI** (query API) + **LlamaIndex** (document ingestion/chunking) |
 | Frontend | **Next.js 15** (App Router) + **Tailwind CSS** + **shadcn/ui** |
 | Packaging | Docker & Docker Compose |
 
@@ -45,10 +45,13 @@ See [`docs/hospital-rag-blueprint.md`](docs/hospital-rag-blueprint.md) for the f
 ```
 backend/           FastAPI service (main.py), Qdrant bootstrap, Dockerfile
 frontend/          Next.js + shadcn/ui clinical dashboard
+ingest/            LlamaIndex document ingestion pipeline (PDF/DOCX/TXT -> Qdrant)
 mocks/             CPU-only stand-ins for TEI + vLLM (no GPU / no model download)
 scripts/           ingest_sample.py, run_local_dev.sh
-tests/             serve_integration.py (real-HTTP integration harness)
-docs/              hospital-rag-blueprint.md (BMAD PRD + SAD)
+tests/             serve_integration.py, ci_smoke.py
+sample_docs/       example clinical document(s) for the ingestion pipeline
+docs/              hospital-rag-blueprint.md (BMAD PRD + SAD), TESTING.md
+.github/workflows/ CI (backend smoke test + frontend build)
 docker-compose.yml         Production stack (real TEI + vLLM, needs a GPU host)
 docker-compose.dev.yml     CPU/offline override (mock TEI + vLLM)
 ```
@@ -111,6 +114,30 @@ Copy `backend/.env.example` to `backend/.env` and adjust:
 | `EMBEDDING_DIM` | Vector dimension for `qdrant_init.py` (1024) |
 
 `.env` files are git-ignored — never commit real credentials.
+
+## Retrieval
+
+Search is **hybrid**: a dense semantic vector (BGE-M3 via TEI) and a sparse
+lexical vector (`backend/sparse.py`, BM25-style — catches exact acronyms and
+drug dosages) are fused in Qdrant with Reciprocal Rank Fusion. The
+confidence-threshold gate runs on the top *dense cosine* similarity so the
+guardrail semantics are unchanged.
+
+## Ingesting your own documents
+
+```bash
+pip install -r ingest/requirements.txt
+QDRANT_URL=http://localhost:6333 TEI_EMBEDDING_URL=http://localhost:8080 \
+  python ingest/ingest_documents.py --input-dir sample_docs --department ER
+```
+
+LlamaIndex parses and chunks PDF/DOCX/TXT/MD (see [`ingest/README.md`](ingest/README.md)).
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push/PR: a backend smoke test
+(`tests/ci_smoke.py` — in-process Qdrant hybrid search + guardrails, no GPU)
+and a full frontend production build.
 
 ## Testing
 

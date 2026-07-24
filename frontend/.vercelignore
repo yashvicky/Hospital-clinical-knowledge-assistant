@@ -1,0 +1,6 @@
+# The heavy ML services (Qdrant, TEI, vLLM) and the FastAPI backend are NOT
+# hosted on Vercel — only this Next.js UI is. Set NEXT_PUBLIC_API_URL in the
+# Vercel project settings to point at your self-hosted backend.
+../backend
+../mocks
+../docs

@@ -1,0 +1,6 @@
+STEMI Door-to-Balloon Protocol.
+On confirmed ST-elevation myocardial infarction, obtain a 12-lead ECG within 10 minutes of arrival,
+administer aspirin 325 mg chewed, and activate the cardiac catheterization lab immediately.
+Target first-medical-contact-to-device time is under 90 minutes. Give a P2Y12 inhibitor and
+anticoagulation per the interventional cardiology protocol. Draw troponin but do not delay
+reperfusion awaiting results.

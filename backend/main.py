@@ -3,19 +3,19 @@ Hospital Clinical Knowledge Assistant — FastAPI Backend
 BMAD Phase 4: Core Backend Implementation (Finalized Production Stack)
 
 Fully self-hosted RAG pipeline:
-  - Query embedding: BGE-M3 served via a self-hosted Hugging Face
-    Text Embeddings Inference (TEI) container
-  - Vector search:   Qdrant (cosine distance)
-  - Generation:      Llama 3 (8B/70B) served via vLLM's OpenAI-compatible
-                      streaming API — no external LLM API dependency
+  - Query embedding: BGE-M3 (dense) via a self-hosted Hugging Face TEI container
+  - Sparse encoding:  lexical BM25-style vector (backend/sparse.py) for exact
+                      keyword / acronym / dosage matching
+  - Vector search:    Qdrant HYBRID search — dense + sparse named vectors fused
+                      with Reciprocal Rank Fusion (RRF)
+  - Generation:       Llama 3 (8B/70B) via vLLM's OpenAI-compatible streaming API
 
-Grounding guardrails (carried over unchanged from the PRD's Constraints &
-Guardrails section — these are business requirements, independent of which
-vector DB or LLM serves them):
-  - similarity >= 0.82           -> Confidence: High
-  - 0.65 <= similarity < 0.82    -> Confidence: Moderate
-  - similarity < 0.65            -> bypass the LLM entirely, return the
-                                     fixed "not found" message
+Grounding guardrails (from the PRD's Constraints & Guardrails — business rules,
+independent of the models). The confidence gate uses the top DENSE cosine
+similarity (semantic relevance), while hybrid RRF decides chunk *ordering*:
+  - dense cosine >= 0.82         -> Confidence: High
+  - 0.65 <= dense cosine < 0.82  -> Confidence: Moderate
+  - dense cosine < 0.65          -> bypass the LLM, return the fixed "not found"
 """
 
 import os
@@ -27,7 +27,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import httpx
 from openai import AsyncOpenAI
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, models
+
+from sparse import sparse_encode
 
 # ---------------------------------------------------------
 # 1. App Lifespan & Global Clients
@@ -35,13 +37,14 @@ from qdrant_client import AsyncQdrantClient
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "clinical_sops")
 
-# Self-hosted Text Embeddings Inference (TEI) service running BGE-M3.
-# No external API key required -- embeddings never leave the hospital network.
 TEI_EMBEDDING_URL = os.environ.get("TEI_EMBEDDING_URL", "http://localhost:8080")
 
-# Self-hosted vLLM server exposing an OpenAI-compatible API for Llama 3.
 VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
 VLLM_MODEL_NAME = os.environ.get("VLLM_MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct")
+
+# Confidence thresholds (top dense cosine similarity)
+HIGH_CONF = float(os.environ.get("CONF_HIGH", "0.82"))
+MIN_CONF = float(os.environ.get("CONF_MIN", "0.65"))
 
 qdrant_client: AsyncQdrantClient = None
 embedding_client: httpx.AsyncClient = None
@@ -53,7 +56,6 @@ async def lifespan(app: FastAPI):
     global qdrant_client, embedding_client, llm_client
     qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
     embedding_client = httpx.AsyncClient(base_url=TEI_EMBEDDING_URL, timeout=10.0)
-    # vLLM's OpenAI-compatible server doesn't require a real key
     llm_client = AsyncOpenAI(base_url=VLLM_BASE_URL, api_key=os.environ.get("VLLM_API_KEY", "not-needed"))
     yield
     await qdrant_client.close()
@@ -62,7 +64,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Hospital Clinical Knowledge Assistant API",
-    description="Self-hosted RAG using BGE-M3 (TEI) + Qdrant + Llama 3 (vLLM)",
+    description="Self-hosted hybrid RAG using BGE-M3 (TEI) + Qdrant + Llama 3 (vLLM)",
     lifespan=lifespan
 )
 
@@ -81,55 +83,62 @@ class ClinicalQueryRequest(BaseModel):
 @app.post("/api/v1/query")
 async def clinical_query(request: ClinicalQueryRequest):
     """
-    Executes the clinical RAG pipeline:
-    1. Embed query with the self-hosted TEI service (BGE-M3)
-    2. Vector search via Qdrant
-    3. Filter by similarity threshold
-    4. Stream response via Llama 3 (vLLM)
+    1. Embed query (dense via TEI/BGE-M3) + encode sparse (lexical)
+    2. Hybrid vector search via Qdrant (dense + sparse, fused with RRF)
+    3. Confidence gate on the top dense cosine similarity
+    4. Stream a grounded, cited response via Llama 3 (vLLM)
     """
 
-    # STEP 1: Embed the user query using the self-hosted embedding model
+    # STEP 1: Dense embedding (TEI) + sparse lexical encoding
     try:
-        embed_res = await embedding_client.post(
-            "/embed",
-            json={"inputs": [request.query]}
-        )
+        embed_res = await embedding_client.post("/embed", json={"inputs": [request.query]})
         embed_res.raise_for_status()
-        query_vector = embed_res.json()[0]
+        dense_vec = embed_res.json()[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failure: {str(e)}")
 
-    # STEP 2: Vector Search via Qdrant
-    # Collection is configured with Distance.COSINE, so `.score` on each hit
-    # is already a cosine similarity in [0, 1] (no manual 1 - distance math).
+    sparse_vec = sparse_encode(request.query)
+    sparse_query = models.SparseVector(indices=sparse_vec["indices"], values=sparse_vec["values"])
+
+    # STEP 2: Hybrid search (dense + sparse, RRF fusion) for chunk ordering,
+    # plus a dense-only top score for the confidence gate.
     try:
-        result = await qdrant_client.query_points(
+        hybrid = await qdrant_client.query_points(
             collection_name=QDRANT_COLLECTION,
-            query=query_vector,
+            prefetch=[
+                models.Prefetch(query=dense_vec, using="dense", limit=max(request.k_chunks, 10)),
+                models.Prefetch(query=sparse_query, using="sparse", limit=max(request.k_chunks, 10)),
+            ],
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
             limit=request.k_chunks,
             with_payload=True,
         )
-        hits = result.points
+        hits = hybrid.points
+
+        dense_only = await qdrant_client.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=dense_vec, using="dense", limit=1, with_payload=False,
+        )
+        top_similarity = dense_only.points[0].score if dense_only.points else 0.0
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vector search failure: {str(e)}")
 
-    # STEP 3: Apply Confidence Thresholds (Guardrails)
+    # STEP 3: Confidence guardrails
     if not hits:
         return StreamingResponse(
             chunk_generator("Information not found in approved clinical guidelines."),
             media_type="text/event-stream"
         )
 
-    top_similarity = hits[0].score
-
-    # Hard cutoff if the highest match is below 0.65
-    if top_similarity < 0.65:
+    if top_similarity < MIN_CONF:
         return StreamingResponse(
             chunk_generator(f"No matching clinical guideline found. Highest similarity was only {top_similarity:.2f}."),
             media_type="text/event-stream"
         )
 
-    # STEP 4: Assemble Context & XML Prompts
+    confidence = "High" if top_similarity >= HIGH_CONF else "Moderate"
+
+    # STEP 4: Assemble XML context + grounded prompt
     context_xml = "<retrieved_documents>\n"
     for hit in hits:
         payload = hit.payload or {}
@@ -152,29 +161,30 @@ async def clinical_query(request: ClinicalQueryRequest):
     {context_xml}
     """
 
-    # STEP 5: Stream Llama 3 Response via vLLM's OpenAI-compatible API
     async def generate_llm_stream() -> AsyncGenerator[str, None]:
         try:
             stream = await llm_client.chat.completions.create(
                 model=VLLM_MODEL_NAME,
                 max_tokens=1024,
-                temperature=0.0,  # deterministic, grounded clinical answers
+                temperature=0.0,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": request.query},
                 ],
                 stream=True,
             )
-
             async for chunk in stream:
                 delta = chunk.choices[0].delta.content if chunk.choices else None
                 if delta:
                     yield delta
-
         except Exception as e:
             yield f"\n[Generation Error: {str(e)}]"
 
-    return StreamingResponse(generate_llm_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate_llm_stream(),
+        media_type="text/event-stream",
+        headers={"X-Retrieval-Confidence": confidence, "X-Top-Similarity": f"{top_similarity:.4f}"},
+    )
 
 
 async def chunk_generator(text: str) -> AsyncGenerator[str, None]:

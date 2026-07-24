@@ -1,7 +1,8 @@
 """
 One-shot bootstrap for local/dev runs: waits for Qdrant + the embedding
-service, ensures the collection exists, and seeds a few sample SOP chunks so
-the API returns real answers immediately. Idempotent and safe to re-run.
+service, ensures the HYBRID collection exists, and seeds sample SOP chunks
+(dense + sparse vectors) so the API returns real answers immediately.
+Idempotent and safe to re-run.
 
     python bootstrap.py
 """
@@ -10,12 +11,14 @@ import time
 
 import httpx
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PayloadSchemaType, PointStruct
+from qdrant_client.models import PointStruct, SparseVector
+
+from qdrant_init import ensure_collection
+from sparse import sparse_encode
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "clinical_sops")
 TEI_EMBEDDING_URL = os.environ.get("TEI_EMBEDDING_URL", "http://localhost:8080")
-EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM", "1024"))
 
 SAMPLE_SOPS = [
     {
@@ -67,29 +70,24 @@ def embed(client: httpx.Client, text: str) -> list[float]:
 
 
 def main():
-    qc = _wait(lambda: (QdrantClient(url=QDRANT_URL).get_collections(), QdrantClient(url=QDRANT_URL))[1],
-               "Qdrant")
-    if not qc.collection_exists(QDRANT_COLLECTION):
-        qc.create_collection(
-            collection_name=QDRANT_COLLECTION,
-            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
-        )
-        for field, schema in [("doc_id", PayloadSchemaType.KEYWORD),
-                              ("department", PayloadSchemaType.KEYWORD),
-                              ("is_active", PayloadSchemaType.BOOL)]:
-            qc.create_payload_index(collection_name=QDRANT_COLLECTION, field_name=field, field_schema=schema)
-        print(f"Created collection '{QDRANT_COLLECTION}'.")
-    else:
-        print(f"Collection '{QDRANT_COLLECTION}' already exists.")
+    qc = _wait(lambda: (QdrantClient(url=QDRANT_URL).get_collections(), QdrantClient(url=QDRANT_URL))[1], "Qdrant")
+    ensure_collection(qc)
 
     with httpx.Client() as hc:
         _wait(lambda: embed(hc, "healthcheck"), "embedding service")
         points = []
         for i, sop in enumerate(SAMPLE_SOPS, start=1):
-            points.append(PointStruct(id=i, vector=embed(hc, sop["paragraph_text"]),
-                                      payload={**sop, "is_active": True}))
+            sp = sparse_encode(sop["paragraph_text"])
+            points.append(PointStruct(
+                id=i,
+                vector={
+                    "dense": embed(hc, sop["paragraph_text"]),
+                    "sparse": SparseVector(indices=sp["indices"], values=sp["values"]),
+                },
+                payload={**sop, "is_active": True},
+            ))
         qc.upsert(collection_name=QDRANT_COLLECTION, points=points)
-    print(f"Seeded {len(SAMPLE_SOPS)} sample SOP chunks. Bootstrap complete.")
+    print(f"Seeded {len(SAMPLE_SOPS)} sample SOP chunks (dense + sparse). Bootstrap complete.")
 
 
 if __name__ == "__main__":

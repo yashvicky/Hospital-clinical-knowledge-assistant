@@ -1,0 +1,5 @@
+llama-index-core>=0.11,<0.13
+llama-index-readers-file>=0.2
+pymupdf>=1.24
+qdrant-client
+httpx
