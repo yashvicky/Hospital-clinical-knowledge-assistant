@@ -91,6 +91,12 @@ Open `http://localhost:3000` and:
 3. Click the blue **citation chip** (e.g. `SOP-SEPSIS-2026 (p. 3)`) — the right
    **Source Verification** panel activates with that document's ID and page.
 4. Try an off-topic question to see the "no matching guideline" fallback.
+5. Notice the **Confidence: High (…%)** badge next to *AI Assessment*.
+6. Type a query with fake PHI (e.g. *"sepsis tx for patient John Doe MRN: 55231"*)
+   and watch the amber **PHI redacted** notice appear — and the shorthand
+   *"tx"* still resolves to the sepsis protocol.
+7. After clicking a citation, the right panel shows the **exact source
+   paragraph** with your query terms highlighted (via `GET /api/v1/source`).
 
 ## 4. Add your own SOPs (optional)
 

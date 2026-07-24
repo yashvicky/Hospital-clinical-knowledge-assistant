@@ -43,12 +43,13 @@ See [`docs/hospital-rag-blueprint.md`](docs/hospital-rag-blueprint.md) for the f
 ## Repository layout
 
 ```
-backend/           FastAPI service (main.py), Qdrant bootstrap, Dockerfile
+backend/           FastAPI service (main.py), hybrid search, PHI redaction,
+                   shorthand expansion, Qdrant bootstrap, Dockerfile
 frontend/          Next.js + shadcn/ui clinical dashboard
 ingest/            LlamaIndex document ingestion pipeline (PDF/DOCX/TXT -> Qdrant)
 mocks/             CPU-only stand-ins for TEI + vLLM (no GPU / no model download)
 scripts/           ingest_sample.py, run_local_dev.sh
-tests/             serve_integration.py, ci_smoke.py
+tests/             serve_integration.py, ci_smoke.py, eval_hallucination.py
 sample_docs/       example clinical document(s) for the ingestion pipeline
 docs/              hospital-rag-blueprint.md (BMAD PRD + SAD), TESTING.md
 .github/workflows/ CI (backend smoke test + frontend build)
@@ -112,6 +113,8 @@ Copy `backend/.env.example` to `backend/.env` and adjust:
 | `VLLM_BASE_URL` | vLLM OpenAI-compatible base URL |
 | `VLLM_MODEL_NAME` | Served model id |
 | `EMBEDDING_DIM` | Vector dimension for `qdrant_init.py` (1024) |
+| `API_KEY` | If set, requires `Authorization: Bearer <key>` (default: open) |
+| `FRONTEND_ORIGIN` | CORS origin for the UI (default `*`) |
 
 `.env` files are git-ignored — never commit real credentials.
 
@@ -136,12 +139,29 @@ LlamaIndex parses and chunks PDF/DOCX/TXT/MD (see [`ingest/README.md`](ingest/RE
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push/PR: a backend smoke test
-(`tests/ci_smoke.py` — in-process Qdrant hybrid search + guardrails, no GPU)
-and a full frontend production build.
+(`tests/ci_smoke.py` — in-process Qdrant hybrid search + guardrails, no GPU),
+a grounding/hallucination eval (`tests/eval_hallucination.py`), and a full
+frontend production build.
 
 ## Testing
 
 `tests/serve_integration.py` boots the real backend against an in-process Qdrant seeded through the real TEI service, wired to the mock TEI + vLLM over HTTP, and verifies both the high-confidence cited path and the low-similarity fallback.
+
+## Clinical safety & UX features
+
+- **PHI redaction** (`backend/phi.py`): incoming queries are scrubbed for
+  obvious identifiers (SSN, MRN, phone, email, dates, patient names) *before*
+  they are embedded, sent to the LLM, or logged. The UI shows a notice when a
+  redaction occurs (`X-PHI-Redacted` header).
+- **Medical shorthand expansion** (`backend/normalize.py`): terse queries like
+  "sepsis tx" or "MI dx" are expanded to improve retrieval.
+- **Confidence badge**: the UI shows `Confidence: High (96%)` / `Moderate`
+  derived from the top dense cosine similarity (`X-Retrieval-Confidence`).
+- **Source verification**: clicking a citation calls `GET /api/v1/source` and
+  renders the *exact* stored source paragraph with matched query terms
+  highlighted.
+- **Optional API-key auth**: set `API_KEY` to require
+  `Authorization: Bearer <key>` on the API (disabled by default for local dev).
 
 ## Security & compliance notes
 

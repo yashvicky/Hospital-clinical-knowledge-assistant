@@ -24,6 +24,8 @@ jobs:
         run: python -m compileall backend mocks scripts tests ingest
       - name: Integration smoke test (in-process Qdrant + mock TEI/vLLM)
         run: python tests/ci_smoke.py
+      - name: Hallucination / grounding eval
+        run: python tests/eval_hallucination.py
 
   frontend:
     name: Frontend (build)

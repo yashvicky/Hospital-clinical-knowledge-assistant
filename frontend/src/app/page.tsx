@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldCheck, Send, Stethoscope } from "lucide-react";
+import { ShieldCheck, Send, Stethoscope, ShieldAlert } from "lucide-react";
 
 import { useClinicalQuery } from "@/hooks/useClinicalQuery";
 import { MessageFormatter } from "@/components/MessageFormatter";
@@ -17,9 +17,18 @@ export default function ClinicalDashboard() {
     submitQuery,
     responseStream,
     isLoading,
+    confidence,
+    topSimilarity,
+    phiRedacted,
     activeCitation,
-    setActiveCitation,
+    source,
+    sourceLoading,
+    sourceError,
+    onCitationClick,
   } = useClinicalQuery();
+
+  const showConfidence = confidence && confidence !== "None";
+  const pct = topSimilarity != null ? Math.round(topSimilarity * 100) : null;
 
   return (
     <main className="flex h-screen w-full overflow-hidden bg-muted/40 font-sans">
@@ -50,17 +59,27 @@ export default function ClinicalDashboard() {
                     Clinical Query
                   </span>
                   <p className="mt-1 font-medium text-foreground">{query}</p>
+                  {phiRedacted && (
+                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-amber-600">
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                      Possible PHI was detected and redacted before processing.
+                    </p>
+                  )}
                 </div>
-                <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-primary">
-                  AI Assessment
-                </span>
 
-                <MessageFormatter
-                  content={responseStream}
-                  onCitationClick={(docId, page) =>
-                    setActiveCitation({ docId, page })
-                  }
-                />
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                    AI Assessment
+                  </span>
+                  {showConfidence && (
+                    <Badge variant={confidence === "High" ? "success" : "secondary"}>
+                      Confidence: {confidence}
+                      {pct != null ? ` (${pct}%)` : ""}
+                    </Badge>
+                  )}
+                </div>
+
+                <MessageFormatter content={responseStream} onCitationClick={onCitationClick} />
 
                 {isLoading && (
                   <span className="ml-1 inline-block h-4 w-2 animate-pulse bg-primary align-middle" />
@@ -101,7 +120,13 @@ export default function ClinicalDashboard() {
 
       {/* RIGHT PANE: Document Verification Panel */}
       <section className="relative z-20 h-full w-2/5">
-        <DocumentPanel citation={activeCitation} />
+        <DocumentPanel
+          citation={activeCitation}
+          source={source}
+          loading={sourceLoading}
+          error={sourceError}
+          queryTerms={query}
+        />
       </section>
     </main>
   );
