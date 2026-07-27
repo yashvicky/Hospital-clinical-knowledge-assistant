@@ -32,10 +32,13 @@ This starts five services:
 | `mock-vllm` | 8001 | generation service (Llama 3 stand-in) |
 | `init` | — | one-shot: creates the collection + seeds 3 sample SOPs, then exits |
 | `backend` | 8000 | the real FastAPI RAG API |
+| `frontend` | 3000 | the Next.js clinical UI |
 
 Wait until you see `clinical_init exited with code 0` and
-`clinical_backend | ... Application startup complete.` The API is now live on
-`http://localhost:8000`.
+`clinical_backend | ... Application startup complete.` The API is live on
+`http://localhost:8000` and the **UI on http://localhost:3000**.
+
+(Shortcut: `make up` runs the same command; `make down` tears it down.)
 
 ## 2. Test the API with curl
 
@@ -73,18 +76,10 @@ curl -N -X POST http://localhost:8000/api/v1/query -H "Content-Type: application
 
 Interactive API docs are at `http://localhost:8000/docs`.
 
-## 3. Run the frontend UI
+## 3. Use the UI
 
-In a second terminal:
-
-```bash
-cd frontend
-cp .env.local.example .env.local     # defaults to http://localhost:8000/api/v1/query
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000` and:
+The stack already serves the UI at **http://localhost:3000** (the `frontend`
+container). Open it and:
 
 1. Type **"What is the 1-hour sepsis protocol?"** and press *Ask Assistant*.
 2. Watch the answer stream in on the left.

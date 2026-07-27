@@ -64,5 +64,18 @@ services:
       - mock-tei
       - mock-vllm
 
+  # Next.js clinical UI — the browser (on your host) calls the backend at
+  # http://localhost:8000, so NEXT_PUBLIC_API_URL points there.
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1/query
+    container_name: clinical_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
 volumes:
   qdrant_data:

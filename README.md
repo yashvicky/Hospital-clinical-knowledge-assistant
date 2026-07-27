@@ -66,8 +66,12 @@ docker-compose.dev.yml     CPU/offline override (mock TEI + vLLM)
 Runs the **real** backend + **real** Qdrant with lightweight mock TEI/vLLM so you can exercise the full pipeline on any laptop. The stack is self-seeding — an `init` service creates the collection and loads sample SOPs automatically.
 
 ```bash
-docker compose -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.dev.yml up --build   # or: make up
 ```
+
+This brings up **everything** — Qdrant, mock TEI/vLLM, the FastAPI backend
+(auto-seeded), and the Next.js UI. Open **http://localhost:3000** to test, or
+hit the API on `http://localhost:8000`.
 
 See **[docs/TESTING.md](docs/TESTING.md)** for a full walkthrough (curl examples, expected output, and the UI test).
 
