@@ -66,7 +66,7 @@ docker-compose.dev.yml     CPU/offline override (mock TEI + vLLM)
 Want real answers without paying for a GPU? Run the LLM locally with Ollama (or
 a free Groq key) — the backend is OpenAI-compatible, so it's just env values:
 ```bash
-ollama pull llama3.2
+ollama pull bge-m3 && ollama pull llama3.2
 docker compose -f docker-compose.free.yml up --build   # -> http://localhost:3000
 ```
 Full guide: **[docs/FREE_LOCAL.md](docs/FREE_LOCAL.md)**.

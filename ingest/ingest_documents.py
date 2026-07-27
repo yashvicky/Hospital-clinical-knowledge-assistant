@@ -33,6 +33,7 @@ from llama_index.core.node_parser import SentenceSplitter
 # reuse the backend's sparse encoder + collection bootstrap
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from sparse import sparse_encode          # noqa: E402
+from embedding import embed_sync         # noqa: E402
 from qdrant_init import ensure_collection  # noqa: E402
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
@@ -45,14 +46,12 @@ _NS = uuid.UUID("6f9619ff-8b86-d011-b42d-00c04fc964ff")  # fixed namespace for s
 
 
 def embed(hc: httpx.Client, text: str) -> list[float]:
-    r = hc.post(f"{TEI_EMBEDDING_URL}/embed", json={"inputs": [text]}, timeout=60.0)
-    r.raise_for_status()
-    return r.json()[0]
+    return embed_sync(hc, [text])[0]
 
 
 def build_points(nodes, department: str):
     points = []
-    with httpx.Client() as hc:
+    with httpx.Client(base_url=TEI_EMBEDDING_URL, timeout=120.0) as hc:
         for idx, node in enumerate(nodes):
             text = node.get_content()
             if not text.strip():

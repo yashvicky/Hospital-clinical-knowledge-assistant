@@ -29,6 +29,7 @@ from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient, models
 
 from sparse import sparse_encode
+from embedding import embed_async
 from phi import redact_phi
 from normalize import expand_shorthand
 
@@ -58,7 +59,7 @@ llm_client: AsyncOpenAI = None
 async def lifespan(app: FastAPI):
     global qdrant_client, embedding_client, llm_client
     qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
-    embedding_client = httpx.AsyncClient(base_url=TEI_EMBEDDING_URL, timeout=10.0)
+    embedding_client = httpx.AsyncClient(base_url=TEI_EMBEDDING_URL, timeout=60.0)
     llm_client = AsyncOpenAI(base_url=VLLM_BASE_URL, api_key=os.environ.get("VLLM_API_KEY", "not-needed"))
     yield
     await qdrant_client.close()
@@ -108,9 +109,7 @@ async def clinical_query(request: ClinicalQueryRequest):
 
     # STEP 1: dense embedding (TEI) + sparse lexical encoding of the normalized query
     try:
-        embed_res = await embedding_client.post("/embed", json={"inputs": [normalized]})
-        embed_res.raise_for_status()
-        dense_vec = embed_res.json()[0]
+        dense_vec = (await embed_async(embedding_client, [normalized]))[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failure: {str(e)}")
 

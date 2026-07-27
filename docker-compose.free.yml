@@ -1,14 +1,16 @@
-# $0 LOCAL STACK — real models, no GPU rental, nothing leaves your machine.
+# $0 LOCAL STACK — real models, no GPU, no Hugging Face downloads in Docker.
+# Embeddings AND generation both run through your local Ollama, so the only
+# containers are Qdrant + backend + UI.
 #
-#   1. Install Ollama (https://ollama.com) and pull a small model:
-#        ollama pull llama3.2            # ~2 GB, runs on CPU / Apple Silicon
-#   2. Make sure Ollama is running (it serves an OpenAI-compatible API on 11434)
+#   1. Install Ollama (https://ollama.com) and pull the two models:
+#        ollama pull bge-m3        # embeddings (~1.2 GB, 1024-dim)
+#        ollama pull llama3.2      # generation (~2 GB; use llama3.2:1b if small)
+#   2. Make sure the Ollama app is running (serves OpenAI-compatible API on 11434)
 #   3. docker compose -f docker-compose.free.yml up --build
 #   4. Open http://localhost:3000
 #
-# Embeddings use the REAL BGE-M3 model on CPU (via TEI); generation uses your
-# local Ollama. Both are free. First boot downloads BGE-M3 (~2 GB) into a cached
-# volume. If your machine is small, use `ollama pull llama3.2:1b`.
+# Nothing leaves your machine. First model calls are slow while Ollama loads
+# them into memory; the backend retries during seeding.
 
 services:
   qdrant:
@@ -19,19 +21,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  # Real BGE-M3 embeddings on CPU (no GPU needed, just slower than GPU).
-  tei-embedding-service:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
-    container_name: clinical_tei
-    environment:
-      - MODEL_ID=BAAI/bge-m3
-    volumes:
-      - tei_model_cache:/data
-    ports:
-      - "8080:80"
-    command: --model-id BAAI/bge-m3 --auto-truncate
-
-  # One-shot: create the collection + seed sample SOPs (real embeddings).
+  # One-shot: create the collection + seed sample SOPs (embeds via Ollama).
   init:
     build:
       context: ./backend
@@ -40,11 +30,14 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=clinical_sops
-      - TEI_EMBEDDING_URL=http://tei-embedding-service:80
+      - EMBED_BACKEND=openai
+      - EMBED_MODEL=bge-m3
+      - TEI_EMBEDDING_URL=http://host.docker.internal:11434
       - EMBEDDING_DIM=1024
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - qdrant
-      - tei-embedding-service
     restart: "no"
 
   backend:
@@ -54,19 +47,20 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=clinical_sops
-      - TEI_EMBEDDING_URL=http://tei-embedding-service:80
-      # Ollama runs on the HOST (best perf, esp. on Apple Silicon). The backend
-      # reaches it via host.docker.internal. Change the model to whatever you pulled.
+      # Embeddings via Ollama (OpenAI-compatible /v1/embeddings)
+      - EMBED_BACKEND=openai
+      - EMBED_MODEL=bge-m3
+      - TEI_EMBEDDING_URL=http://host.docker.internal:11434
+      # Generation via Ollama (OpenAI-compatible /v1/chat/completions)
       - VLLM_BASE_URL=http://host.docker.internal:11434/v1
       - VLLM_MODEL_NAME=llama3.2
       - VLLM_API_KEY=ollama
     ports:
       - "8000:8000"
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # lets the container reach host Ollama on Linux
+      - "host.docker.internal:host-gateway"   # reach host Ollama (esp. on Linux)
     depends_on:
       - qdrant
-      - tei-embedding-service
 
   frontend:
     build:
@@ -81,4 +75,3 @@ services:
 
 volumes:
   qdrant_data:
-  tei_model_cache:

@@ -16,19 +16,21 @@ Nothing leaves your computer, so it's HIPAA-appropriate and truly free.
 **Prereqs:** Docker Desktop + [Ollama](https://ollama.com) (macOS/Windows/Linux).
 
 ```bash
-# 1. Pull a small model (CPU / Apple-Silicon friendly)
-ollama pull llama3.2          # ~2 GB. Tiny machine? use  llama3.2:1b
-#    (Ollama auto-serves an OpenAI-compatible API on http://localhost:11434)
+# 1. Pull BOTH models (Ollama serves embeddings AND generation — no TEI/HF needed)
+ollama pull bge-m3            # embeddings, 1024-dim (~1.2 GB)
+ollama pull llama3.2         # generation (~2 GB). Tiny machine? use llama3.2:1b
+#    (Ollama serves an OpenAI-compatible API on http://localhost:11434)
 
-# 2. Start the free stack (real BGE-M3 embeddings on CPU + your local LLM)
+# 2. Start the stack (just Qdrant + backend + UI; models run in Ollama on the host)
 docker compose -f docker-compose.free.yml up --build
 
 # 3. Open the UI
-open http://localhost:3000
+#    http://localhost:3000
 ```
 
-First boot downloads the BGE-M3 embedding model (~2 GB) into a cached Docker
-volume; later boots are fast. To use a different Ollama model, change
+Both embeddings and the LLM run in your local Ollama, so there is **no Hugging
+Face download inside Docker** (this avoids the TEI "could not download model
+artifacts" error). To use different models, change `EMBED_MODEL` /
 `VLLM_MODEL_NAME` in `docker-compose.free.yml` to whatever you pulled.
 
 Notes:
