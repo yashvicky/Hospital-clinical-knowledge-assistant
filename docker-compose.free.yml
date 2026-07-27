@@ -55,6 +55,10 @@ services:
       - VLLM_BASE_URL=http://host.docker.internal:11434/v1
       - VLLM_MODEL_NAME=llama3.2
       - VLLM_API_KEY=ollama
+      # BGE-M3 cosine scores run lower than the blueprint's defaults;
+      # calibrate the confidence gate for it (override as you like).
+      - CONF_MIN=0.45
+      - CONF_HIGH=0.6
     ports:
       - "8000:8000"
     extra_hosts:

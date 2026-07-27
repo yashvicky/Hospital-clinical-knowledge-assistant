@@ -85,3 +85,11 @@ docker compose -f docker-compose.dev.yml up --build      # or: make up
 
 **Bottom line:** for testing and even day-to-day private use, Option 1 costs
 nothing and runs the real models on hardware you already own.
+
+### Tuning retrieval confidence
+
+BGE-M3 cosine similarities run lower than the blueprint's original 0.65/0.82
+cutoffs, so the free stack sets `CONF_MIN=0.45` and `CONF_HIGH=0.6` in
+`docker-compose.free.yml`. Lower `CONF_MIN` if relevant answers are being
+refused; raise it if irrelevant chunks slip through. Terse one-word queries
+score low either way — ask a fuller question for best results.
