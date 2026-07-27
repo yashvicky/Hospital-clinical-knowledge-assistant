@@ -61,6 +61,16 @@ docker-compose.dev.yml     CPU/offline override (mock TEI + vLLM)
 
 ## Quick start
 
+### Run it for $0 (real models, no GPU rental)
+
+Want real answers without paying for a GPU? Run the LLM locally with Ollama (or
+a free Groq key) — the backend is OpenAI-compatible, so it's just env values:
+```bash
+ollama pull llama3.2
+docker compose -f docker-compose.free.yml up --build   # -> http://localhost:3000
+```
+Full guide: **[docs/FREE_LOCAL.md](docs/FREE_LOCAL.md)**.
+
 ### Option A — CPU / offline (mock ML services, no GPU)
 
 Runs the **real** backend + **real** Qdrant with lightweight mock TEI/vLLM so you can exercise the full pipeline on any laptop. The stack is self-seeding — an `init` service creates the collection and loads sample SOPs automatically.

@@ -1,0 +1,84 @@
+# $0 LOCAL STACK — real models, no GPU rental, nothing leaves your machine.
+#
+#   1. Install Ollama (https://ollama.com) and pull a small model:
+#        ollama pull llama3.2            # ~2 GB, runs on CPU / Apple Silicon
+#   2. Make sure Ollama is running (it serves an OpenAI-compatible API on 11434)
+#   3. docker compose -f docker-compose.free.yml up --build
+#   4. Open http://localhost:3000
+#
+# Embeddings use the REAL BGE-M3 model on CPU (via TEI); generation uses your
+# local Ollama. Both are free. First boot downloads BGE-M3 (~2 GB) into a cached
+# volume. If your machine is small, use `ollama pull llama3.2:1b`.
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: clinical_qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # Real BGE-M3 embeddings on CPU (no GPU needed, just slower than GPU).
+  tei-embedding-service:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: clinical_tei
+    environment:
+      - MODEL_ID=BAAI/bge-m3
+    volumes:
+      - tei_model_cache:/data
+    ports:
+      - "8080:80"
+    command: --model-id BAAI/bge-m3 --auto-truncate
+
+  # One-shot: create the collection + seed sample SOPs (real embeddings).
+  init:
+    build:
+      context: ./backend
+    container_name: clinical_init
+    command: ["python", "bootstrap.py"]
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - TEI_EMBEDDING_URL=http://tei-embedding-service:80
+      - EMBEDDING_DIM=1024
+    depends_on:
+      - qdrant
+      - tei-embedding-service
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: clinical_backend
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - TEI_EMBEDDING_URL=http://tei-embedding-service:80
+      # Ollama runs on the HOST (best perf, esp. on Apple Silicon). The backend
+      # reaches it via host.docker.internal. Change the model to whatever you pulled.
+      - VLLM_BASE_URL=http://host.docker.internal:11434/v1
+      - VLLM_MODEL_NAME=llama3.2
+      - VLLM_API_KEY=ollama
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach host Ollama on Linux
+    depends_on:
+      - qdrant
+      - tei-embedding-service
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1/query
+    container_name: clinical_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  qdrant_data:
+  tei_model_cache:

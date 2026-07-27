@@ -1,0 +1,85 @@
+# Running for $0 (no GPU rental, no paid services)
+
+The only part that needed a paid GPU was the LLM. Because the backend talks to
+an **OpenAI-compatible** endpoint, you can point it at a free local or free
+cloud model with **zero code changes** — just env values. Everything else
+(Qdrant, BGE-M3 embeddings on CPU, FastAPI, the UI) runs free on your machine.
+
+There are two free routes. Pick one.
+
+---
+
+## Option 1 — Fully local & private (recommended)  ·  Ollama
+
+Nothing leaves your computer, so it's HIPAA-appropriate and truly free.
+
+**Prereqs:** Docker Desktop + [Ollama](https://ollama.com) (macOS/Windows/Linux).
+
+```bash
+# 1. Pull a small model (CPU / Apple-Silicon friendly)
+ollama pull llama3.2          # ~2 GB. Tiny machine? use  llama3.2:1b
+#    (Ollama auto-serves an OpenAI-compatible API on http://localhost:11434)
+
+# 2. Start the free stack (real BGE-M3 embeddings on CPU + your local LLM)
+docker compose -f docker-compose.free.yml up --build
+
+# 3. Open the UI
+open http://localhost:3000
+```
+
+First boot downloads the BGE-M3 embedding model (~2 GB) into a cached Docker
+volume; later boots are fast. To use a different Ollama model, change
+`VLLM_MODEL_NAME` in `docker-compose.free.yml` to whatever you pulled.
+
+Notes:
+- On **Apple Silicon**, run Ollama natively (not in Docker) so it uses the GPU
+  via Metal — the compose file already reaches it at `host.docker.internal`.
+- CPU generation is slower than a datacenter GPU, but fine for testing. Smaller
+  models (`llama3.2:1b`, `llama3.2:3b`, `phi3`) are much faster.
+
+---
+
+## Option 2 — Zero local compute for the LLM  ·  Groq free tier
+
+If your laptop is too small to run a model, use **Groq's free API** (very fast,
+free tier, OpenAI-compatible). Embeddings still run locally via TEI (free).
+
+> ⚠️ Queries leave your machine and go to Groq. Fine for a demo; **not** for
+> real patient data / production PHI. For that, use Option 1.
+
+```bash
+# 1. Get a free key at https://console.groq.com/keys
+# 2. Start Qdrant + TEI + backend + UI, pointing the LLM at Groq:
+VLLM_BASE_URL=https://api.groq.com/openai/v1 \
+VLLM_MODEL_NAME=llama-3.1-8b-instant \
+VLLM_API_KEY=gsk_your_free_groq_key \
+docker compose -f docker-compose.free.yml up --build
+```
+
+(These env vars override the Ollama defaults in the compose file; you don't need
+Ollama installed for this path.)
+
+---
+
+## Option 3 — Just the app flow, instantly  ·  mock stack
+
+Already set up, needs nothing but Docker — deterministic mock embedder + LLM,
+for testing the UI/pipeline (not real answers):
+
+```bash
+docker compose -f docker-compose.dev.yml up --build      # or: make up
+```
+
+---
+
+## Free hosting (optional, if you want it online)
+
+- **Frontend:** Vercel Hobby tier is free — import the repo, Root Directory
+  `frontend` (see `docs/DEPLOY.md`).
+- **Vector DB:** Qdrant Cloud has a free 1 GB cluster.
+- **Backend + models:** hardest to host free 24/7. Cheapest realistic path is
+  your own machine (Option 1) exposed via a free tunnel (e.g. `cloudflared`
+  quick tunnel) when you want to show it to someone — no server bill.
+
+**Bottom line:** for testing and even day-to-day private use, Option 1 costs
+nothing and runs the real models on hardware you already own.
