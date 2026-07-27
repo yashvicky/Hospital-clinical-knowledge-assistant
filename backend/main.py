@@ -225,6 +225,34 @@ async def get_source(doc_id: str, page: Optional[int] = None):
     }
 
 
+@app.get("/api/v1/sources", dependencies=[Depends(require_api_key)])
+async def list_sources():
+    """List the documents currently in the knowledge base (what the assistant can answer about)."""
+    docs = {}
+    offset = None
+    try:
+        while True:
+            points, offset = await qdrant_client.scroll(
+                collection_name=QDRANT_COLLECTION, limit=256, offset=offset,
+                with_payload=True, with_vectors=False,
+            )
+            for pt in points:
+                pl = pt.payload or {}
+                did = pl.get("doc_id", "UNKNOWN")
+                d = docs.setdefault(did, {"doc_id": did, "title": pl.get("title", did),
+                                          "department": pl.get("department"), "chunks": 0, "pages": set()})
+                d["chunks"] += 1
+                if pl.get("page_number") is not None:
+                    d["pages"].add(pl["page_number"])
+            if offset is None:
+                break
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sources listing failure: {str(e)}")
+    documents = [{"doc_id": d["doc_id"], "title": d["title"], "department": d["department"],
+                  "chunks": d["chunks"], "pages": sorted(d["pages"])} for d in docs.values()]
+    return {"count": len(documents), "documents": documents}
+
+
 @app.get("/api/v1/health")
 async def health():
     return {"status": "ok"}
