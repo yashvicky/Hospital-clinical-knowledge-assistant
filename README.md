@@ -1,5 +1,7 @@
 # Hospital Clinical Knowledge Assistant
 
+[![CI](https://github.com/yashvicky/Hospital-clinical-knowledge-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/yashvicky/Hospital-clinical-knowledge-assistant/actions/workflows/ci.yml)
+
 A HIPAA-oriented, fully self-hosted **Retrieval-Augmented Generation (RAG)** platform that lets clinicians query internal SOPs, WHO/CDC guidelines, and drug manuals in natural language and get **grounded, citation-backed answers** — with a hard rule never to answer without a matching source.
 
 > Retrieval and generation are kept strictly separate so the system stays sub-3-second, cost-efficient, and keeps clinical documents inside the hospital network. No third-party embedding or LLM API is required.
@@ -142,6 +144,10 @@ LlamaIndex parses and chunks PDF/DOCX/TXT/MD (see [`ingest/README.md`](ingest/RE
 (`tests/ci_smoke.py` — in-process Qdrant hybrid search + guardrails, no GPU),
 a grounding/hallucination eval (`tests/eval_hallucination.py`), and a full
 frontend production build.
+
+## Deployment
+
+See **[docs/DEPLOY.md](docs/DEPLOY.md)** — Vercel for the UI (dashboard or the included `deploy-frontend.yml` workflow) and Docker on your VPS/GPU host for the backend.
 
 ## Testing
 
