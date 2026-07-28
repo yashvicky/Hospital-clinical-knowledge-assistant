@@ -37,6 +37,8 @@ TOPIC_KEYWORDS = {
     "airway": {"airway", "intubation", "intubate", "ventilation", "oxygen", "rsi"},
     "cardiac": {"stemi", "troponin", "chest", "aspirin", "mi", "myocardial", "ischemia"},
     "anaphylaxis": {"anaphylaxis", "epinephrine", "allergic", "allergy", "intramuscular", "adrenaline"},
+    "stroke": {"stroke", "ischemic", "alteplase", "tpa", "fibrinolytic", "thrombolytic", "fast", "hemorrhage", "neurological", "ct"},
+    "stemi": {"stemi", "nitroglycerin", "nitro", "aspirin", "balloon", "cath", "coronary", "ecg", "myocardial", "chest"},
 }
 
 
