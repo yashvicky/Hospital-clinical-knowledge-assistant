@@ -177,6 +177,7 @@ See **[docs/DEPLOY.md](docs/DEPLOY.md)** — Vercel for the UI (dashboard or the
   "sepsis tx" or "MI dx" are expanded to improve retrieval.
 - **Confidence badge**: the UI shows `Confidence: High (96%)` / `Moderate`
   derived from the top dense cosine similarity (`X-Retrieval-Confidence`).
+- **In-app document manager**: a "Manage Documents" panel in the UI to upload PDFs/TXT/MD or paste text, list the knowledge base, and delete documents (backed by `POST /api/v1/ingest`, `GET /api/v1/sources`, `DELETE /api/v1/source`).
 - **Source verification**: clicking a citation calls `GET /api/v1/source` and
   renders the *exact* stored source paragraph with matched query terms
   highlighted.

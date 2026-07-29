@@ -1,10 +1,13 @@
 "use client";
 
-import { ShieldCheck, Send, Stethoscope, ShieldAlert } from "lucide-react";
+import { useState } from "react";
+
+import { ShieldCheck, Send, Stethoscope, ShieldAlert, FolderOpen } from "lucide-react";
 
 import { useClinicalQuery } from "@/hooks/useClinicalQuery";
 import { MessageFormatter } from "@/components/MessageFormatter";
 import { DocumentPanel } from "@/components/DocumentPanel";
+import { KnowledgeBase } from "@/components/KnowledgeBase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +30,8 @@ export default function ClinicalDashboard() {
     onCitationClick,
   } = useClinicalQuery();
 
+  const [kbOpen, setKbOpen] = useState(false);
+
   const showConfidence = confidence && confidence !== "None";
   const pct = topSimilarity != null ? Math.round(topSimilarity * 100) : null;
 
@@ -39,10 +44,22 @@ export default function ClinicalDashboard() {
             <Stethoscope className="h-5 w-5" />
             Hospital Clinical Knowledge Assistant
           </h1>
-          <Badge variant="secondary" className="gap-1 font-mono tracking-wider">
-            <ShieldCheck className="h-3 w-3" />
-            HIPAA SECURE
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setKbOpen(true)}
+              className="gap-1"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Manage Documents
+            </Button>
+            <Badge variant="secondary" className="gap-1 font-mono tracking-wider">
+              <ShieldCheck className="h-3 w-3" />
+              HIPAA SECURE
+            </Badge>
+          </div>
         </header>
 
         {/* Streaming Output Area */}
@@ -128,6 +145,8 @@ export default function ClinicalDashboard() {
           queryTerms={query}
         />
       </section>
+
+      <KnowledgeBase open={kbOpen} onClose={() => setKbOpen(false)} />
     </main>
   );
 }
