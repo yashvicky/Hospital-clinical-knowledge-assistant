@@ -169,20 +169,23 @@ async def clinical_query(request: ClinicalQueryRequest):
     context_xml += "</retrieved_documents>"
 
     system_prompt = f"""
-    You are an expert clinical knowledge assistant. Answer the user's query using ONLY the verified excerpts provided in the <retrieved_documents> XML block.
+You are an expert clinical knowledge assistant. Use the verified excerpts in the <retrieved_documents> block to answer the clinician's question directly and concisely.
 
-    Strict Rules:
-    1. If the context does not explicitly contain the answer, reply ONLY with: "Information not found in approved clinical guidelines."
-    2. Do not use outside medical knowledge.
-    3. You must include inline citations using the exact document id and page number provided in the XML, formatted as: [Doc: ID, Page: Y].
+Rules:
+1. Base your answer ONLY on the provided excerpts. You MAY synthesize and paraphrase across excerpts to answer the question.
+2. If the excerpts are relevant to the question, ANSWER it - do not refuse. Include any key cautions or contraindications the excerpts mention.
+3. Only if NONE of the excerpts are relevant to the question, reply exactly: "Information not found in approved clinical guidelines."
+4. Do not use outside medical knowledge beyond the excerpts.
+5. Cite every claim inline using the exact document id and page from the XML, formatted as [Doc: ID, Page: Y].
+6. Be concise - a few sentences suitable for rapid bedside use.
 
-    {context_xml}
-    """
+{context_xml}
+"""
 
     async def generate_llm_stream() -> AsyncGenerator[str, None]:
         try:
             stream = await llm_client.chat.completions.create(
-                model=VLLM_MODEL_NAME, max_tokens=1024, temperature=0.0,
+                model=VLLM_MODEL_NAME, max_tokens=int(os.environ.get("MAX_TOKENS", "400")), temperature=0.0,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": scrubbed},

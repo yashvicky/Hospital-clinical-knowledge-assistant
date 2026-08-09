@@ -93,3 +93,19 @@ cutoffs, so the free stack sets `CONF_MIN=0.45` and `CONF_HIGH=0.6` in
 `docker-compose.free.yml`. Lower `CONF_MIN` if relevant answers are being
 refused; raise it if irrelevant chunks slip through. Terse one-word queries
 score low either way — ask a fuller question for best results.
+
+## Speed & answer quality
+
+Local CPU generation is inherently slow, and small models (llama3.2 ~3B) often
+refuse to synthesize even when the right source was retrieved. Options:
+
+| Goal | Do this | Notes |
+| --- | --- | --- |
+| **Fastest, free** | Use **Groq** (see Option 2 above): `llama-3.1-8b-instant` or `llama-3.3-70b-versatile` | Sub-second responses, free tier, OpenAI-compatible (no code change). Cloud, so **demo / non-PHI only**. |
+| **Better local answers** | `ollama pull llama3.1:8b` and set `VLLM_MODEL_NAME=llama3.1:8b` | Much better at grounded synthesis than 3B; slower on CPU. |
+| **Faster local** | keep `llama3.2:1b` or `:3b` and lower `MAX_TOKENS` (default 400) | Speed over quality. |
+| **Fast AND private (production)** | run vLLM on a GPU host (the hospital's own server) | The real production answer for PHI + speed; not free but not personal-cost either. |
+
+Two backend improvements help on every model: the system prompt now instructs
+the model to answer from relevant context (fewer false "not found" refusals),
+and `MAX_TOKENS` (default 400, env-tunable) keeps replies short and fast.
