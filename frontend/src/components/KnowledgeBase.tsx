@@ -119,7 +119,7 @@ export const KnowledgeBase: React.FC<Props> = ({ open, onClose, onChanged }) => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <Card className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
+      <Card className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border-slate-200/70 shadow-soft-lg">
         <div className="flex items-center justify-between border-b bg-muted/50 px-5 py-3">
           <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
             <FileText className="h-4 w-4 text-primary" /> Knowledge Base

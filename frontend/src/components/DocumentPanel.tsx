@@ -1,9 +1,8 @@
 import React from "react";
-import { FileText, FileSearch, Loader2, AlertCircle } from "lucide-react";
+import { FileText, FileSearch, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 
 import { CitationData, SourceDoc } from "@/hooks/useClinicalQuery";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 
 interface DocumentPanelProps {
   citation: CitationData | null;
@@ -13,93 +12,73 @@ interface DocumentPanelProps {
   queryTerms: string;
 }
 
-// Highlight words from the query (len > 3) within the source paragraph.
 function highlight(text: string, terms: string): React.ReactNode {
   const words = Array.from(
-    new Set(
-      terms
-        .toLowerCase()
-        .match(/[a-z0-9]+/g)
-        ?.filter((w) => w.length > 3) ?? []
-    )
+    new Set(terms.toLowerCase().match(/[a-z0-9]+/g)?.filter((w) => w.length > 3) ?? [])
   );
   if (words.length === 0) return text;
   const re = new RegExp(`\\b(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "gi");
-  const parts = text.split(re);
-  return parts.map((part, i) =>
+  return text.split(re).map((part, i) =>
     words.includes(part.toLowerCase()) ? (
-      <mark key={i} className="rounded bg-yellow-200 px-0.5 text-slate-900">
-        {part}
-      </mark>
+      <mark key={i} className="rounded bg-amber-100 px-0.5 text-amber-900">{part}</mark>
     ) : (
       <span key={i}>{part}</span>
     )
   );
 }
 
-export const DocumentPanel: React.FC<DocumentPanelProps> = ({
-  citation,
-  source,
-  loading,
-  error,
-  queryTerms,
-}) => {
+export const DocumentPanel: React.FC<DocumentPanelProps> = ({ citation, source, loading, error, queryTerms }) => {
   if (!citation) {
     return (
-      <div className="flex h-full flex-col items-center justify-center border-l bg-muted/40 p-8 text-muted-foreground">
-        <FileSearch className="mb-4 h-16 w-16 text-muted-foreground/40" />
-        <p className="text-center font-medium">No document selected</p>
-        <p className="mt-2 text-center text-sm">
-          Click a citation tag in the response to verify the clinical source.
+      <div className="flex h-full flex-col items-center justify-center border-l border-slate-200/70 bg-slate-50/50 p-10 text-center">
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-soft ring-1 ring-slate-200/70">
+          <FileSearch className="h-7 w-7 text-slate-300" />
+        </div>
+        <p className="font-semibold text-slate-700">Source verification</p>
+        <p className="mt-1.5 max-w-[15rem] text-sm text-slate-500">
+          Click any citation in a response to see the exact approved source, with your terms highlighted.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col border-l bg-background shadow-sm">
-      <div className="flex items-center justify-between border-b bg-muted/50 px-4 py-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <FileText className="h-4 w-4 text-primary" />
-            Source Verification
+    <div className="flex h-full flex-col border-l border-slate-200/70 bg-slate-50/50">
+      <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 py-4 backdrop-blur">
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <FileText className="h-4 w-4 text-primary" /> Source Verification
           </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Document ID:{" "}
+          <p className="mt-0.5 truncate text-xs text-slate-500">
             <span className="font-mono text-primary">{citation.docId}</span>
-            {source?.department ? (
-              <span className="ml-2 text-muted-foreground">· {source.department}</span>
-            ) : null}
+            {source?.department ? <span> · {source.department}</span> : null}
           </p>
         </div>
-        <Badge variant="secondary">Page {citation.page}</Badge>
+        <Badge variant="secondary" className="shrink-0">Page {citation.page}</Badge>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-muted/40 p-6">
+      <div className="flex-1 overflow-y-auto p-5">
         {loading ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
+          <div className="flex h-full items-center justify-center text-slate-400">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading source…
           </div>
         ) : error ? (
-          <Card className="flex items-center gap-2 border-destructive/30 p-4 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4" /> {error}
-          </Card>
+          <div className="flex items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+          </div>
         ) : source ? (
-          <Card className="p-5">
-            <p className="mb-2 text-sm font-semibold text-foreground">{source.title}</p>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-soft">
+            <p className="mb-3 text-sm font-semibold text-slate-800">{source.title}</p>
+            <p className="text-[15px] leading-7 text-slate-700">
               {highlight(source.paragraph_text, queryTerms)}
             </p>
-            <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-              Verified excerpt retrieved from the approved clinical knowledge base
-              (doc {source.doc_id}, page {source.page_number}). Matched query terms
-              are highlighted.
-            </p>
-          </Card>
+            <div className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              <span>Verified excerpt from the approved knowledge base (doc {source.doc_id}, page {source.page_number}). Matched terms highlighted.</span>
+            </div>
+          </div>
         ) : (
-          <Card className="flex h-full flex-col items-center justify-center p-6 text-muted-foreground">
-            <p className="font-mono text-sm">[No source content]</p>
-          </Card>
+          <div className="flex h-full items-center justify-center text-sm text-slate-400">No source content.</div>
         )}
       </div>
     </div>
