@@ -1,5 +1,7 @@
 # Running for $0 (no GPU rental, no paid services)
 
+> **Default:** `docker-compose.free.yml` now uses **Gemini (free tier)** for fast generation and keeps **embeddings local** on Ollama. Put your free key in a `.env` file (`GEMINI_API_KEY=...`). To go fully local instead, override `VLLM_*` (see the file's header).
+
 The only part that needed a paid GPU was the LLM. Because the backend talks to
 an **OpenAI-compatible** endpoint, you can point it at a free local or free
 cloud model with **zero code changes** — just env values. Everything else

@@ -1,16 +1,22 @@
-# $0 LOCAL STACK — real models, no GPU, no Hugging Face downloads in Docker.
-# Embeddings AND generation both run through your local Ollama, so the only
-# containers are Qdrant + backend + UI.
+# $0 FAST STACK — local private embeddings + free-tier Gemini for generation.
 #
-#   1. Install Ollama (https://ollama.com) and pull the two models:
-#        ollama pull bge-m3        # embeddings (~1.2 GB, 1024-dim)
-#        ollama pull llama3.2      # generation (~2 GB; use llama3.2:1b if small)
-#   2. Make sure the Ollama app is running (serves OpenAI-compatible API on 11434)
-#   3. docker compose -f docker-compose.free.yml up --build
-#   4. Open http://localhost:3000
+#   1. Install Ollama (https://ollama.com) and pull the embedding model:
+#        ollama pull bge-m3          # embeddings run LOCALLY (private)
+#   2. Get a FREE Gemini API key: https://aistudio.google.com/apikey
+#   3. Create a file named  .env  in this folder containing:
+#        GEMINI_API_KEY=your_free_key_here
+#   4. docker compose -f docker-compose.free.yml up --build
+#   5. Open http://localhost:3000
 #
-# Nothing leaves your machine. First model calls are slow while Ollama loads
-# them into memory; the backend retries during seeding.
+# Embeddings stay on your machine (Ollama / bge-m3). Only the question + the
+# retrieved excerpt are sent to Gemini for fast, high-quality wording.
+#
+# Prefer fully local generation (nothing leaves the machine, slower)? override:
+#   set VLLM_BASE_URL=http://host.docker.internal:11434/v1
+#   set VLLM_MODEL_NAME=llama3.2
+#   (and `ollama pull llama3.2` first)
+# Prefer Groq instead of Gemini? set VLLM_BASE_URL / VLLM_MODEL_NAME / GEMINI_API_KEY
+# to the Groq values (see docs/FREE_LOCAL.md).
 
 services:
   qdrant:
@@ -21,7 +27,6 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  # One-shot: create the collection + seed sample SOPs (embeds via Ollama).
   init:
     build:
       context: ./backend
@@ -47,22 +52,21 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=clinical_sops
-      # Embeddings via Ollama (OpenAI-compatible /v1/embeddings)
+      # Embeddings: LOCAL + private via Ollama (bge-m3)
       - EMBED_BACKEND=openai
       - EMBED_MODEL=bge-m3
       - TEI_EMBEDDING_URL=http://host.docker.internal:11434
-      # Generation via Ollama (OpenAI-compatible /v1/chat/completions)
-      - VLLM_BASE_URL=http://host.docker.internal:11434/v1
-      - VLLM_MODEL_NAME=llama3.2
-      - VLLM_API_KEY=ollama
-      # BGE-M3 cosine scores run lower than the blueprint's defaults;
-      # calibrate the confidence gate for it (override as you like).
+      # Generation: free-tier Gemini by default (fast). Override to go local.
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
+      - VLLM_MODEL_NAME=${VLLM_MODEL_NAME:-gemini-2.0-flash}
+      - VLLM_API_KEY=${GEMINI_API_KEY:-}
       - CONF_MIN=0.45
       - CONF_HIGH=0.6
+      - MAX_TOKENS=400
     ports:
       - "8000:8000"
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # reach host Ollama (esp. on Linux)
+      - "host.docker.internal:host-gateway"
     depends_on:
       - qdrant
 
