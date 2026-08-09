@@ -109,3 +109,30 @@ refuse to synthesize even when the right source was retrieved. Options:
 Two backend improvements help on every model: the system prompt now instructs
 the model to answer from relevant context (fewer false "not found" refusals),
 and `MAX_TOKENS` (default 400, env-tunable) keeps replies short and fast.
+
+### Fast free cloud LLM (Gemini / Groq) — keep embeddings local
+
+Consumer chat plans (Claude Pro, ChatGPT Plus, Gemini) do NOT include API
+access. But you can point just the **LLM** at a free API tier while keeping
+**embeddings local and private** on Ollama (bge-m3). Only the query + retrieved
+excerpts go to the cloud for generation — still not for real PHI, but fast.
+
+**Google Gemini (free API tier — get a key at https://aistudio.google.com/apikey):**
+```
+set VLLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+set VLLM_MODEL_NAME=gemini-2.0-flash
+set VLLM_API_KEY=your_free_gemini_api_key
+docker compose -f docker-compose.free.yml up --build
+```
+
+**Groq (free API tier — key at https://console.groq.com/keys):**
+```
+set VLLM_BASE_URL=https://api.groq.com/openai/v1
+set VLLM_MODEL_NAME=llama-3.1-8b-instant
+set VLLM_API_KEY=your_free_groq_key
+docker compose -f docker-compose.free.yml up --build
+```
+
+Both are OpenAI-compatible, so this is env-only (no code change). You still need
+Ollama running with `bge-m3` for embeddings. For real PHI you need a signed BAA
+(enterprise tiers) or a fully local GPU.
