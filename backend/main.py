@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
     global qdrant_client, embedding_client, llm_client
     qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
     embedding_client = httpx.AsyncClient(base_url=TEI_EMBEDDING_URL, timeout=60.0)
-    llm_client = AsyncOpenAI(base_url=VLLM_BASE_URL, api_key=os.environ.get("VLLM_API_KEY", "not-needed"))
+    llm_client = AsyncOpenAI(base_url=VLLM_BASE_URL, api_key=(os.environ.get("VLLM_API_KEY") or "not-needed"))
     yield
     await qdrant_client.close()
     await embedding_client.aclose()
