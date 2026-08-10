@@ -59,7 +59,7 @@ services:
       # Generation: free-tier Gemini by default (fast). Override to go local.
       - VLLM_BASE_URL=${VLLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
       - VLLM_MODEL_NAME=${VLLM_MODEL_NAME:-gemini-2.0-flash}
-      - VLLM_API_KEY=${GEMINI_API_KEY:-}
+      - VLLM_API_KEY=${LLM_API_KEY:-${GEMINI_API_KEY:-}}
       - CONF_MIN=0.45
       - CONF_HIGH=0.6
       - MAX_TOKENS=400
