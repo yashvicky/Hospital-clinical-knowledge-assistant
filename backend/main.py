@@ -34,6 +34,7 @@ from embedding import embed_async
 from phi import redact_phi
 from normalize import expand_shorthand
 from chunking import build_chunks
+from metadata import build_doc_meta, now_ts
 
 # ---------------------------------------------------------
 # 1. Config & Global Clients
@@ -98,6 +99,23 @@ async def require_api_key(authorization: Optional[str] = Header(default=None)):
 class ClinicalQueryRequest(BaseModel):
     query: str = Field(..., description="The medical query from the clinician")
     k_chunks: int = Field(5, description="Number of context chunks to retrieve")
+    department: Optional[str] = Field(None, description="Restrict retrieval to a department")
+    access_levels: Optional[list[str]] = Field(None, description="Allowed access levels for the requester")
+
+
+def _retrieval_filter(department=None, access_levels=None):
+    """Only retrieve approved, in-effect (non-expired), active documents;
+    optionally scoped to a department and the requester's access levels."""
+    must = [
+        models.FieldCondition(key="is_active", match=models.MatchValue(value=True)),
+        models.FieldCondition(key="approval_status", match=models.MatchValue(value="approved")),
+        models.FieldCondition(key="expiry_ts", range=models.Range(gte=now_ts())),
+    ]
+    if department:
+        must.append(models.FieldCondition(key="department", match=models.MatchValue(value=department)))
+    if access_levels:
+        must.append(models.FieldCondition(key="access_level", match=models.MatchAny(any=list(access_levels))))
+    return models.Filter(must=must)
 
 
 # ---------------------------------------------------------
@@ -121,11 +139,12 @@ async def clinical_query(request: ClinicalQueryRequest):
 
     # STEP 2: hybrid search (RRF) for ordering + dense-only top score for the gate
     try:
+        rf = _retrieval_filter(request.department, request.access_levels)
         hybrid = await qdrant_client.query_points(
             collection_name=QDRANT_COLLECTION,
             prefetch=[
-                models.Prefetch(query=dense_vec, using="dense", limit=max(request.k_chunks, 10)),
-                models.Prefetch(query=sparse_query, using="sparse", limit=max(request.k_chunks, 10)),
+                models.Prefetch(query=dense_vec, using="dense", limit=max(request.k_chunks, 10), filter=rf),
+                models.Prefetch(query=sparse_query, using="sparse", limit=max(request.k_chunks, 10), filter=rf),
             ],
             query=models.FusionQuery(fusion=models.Fusion.RRF),
             limit=request.k_chunks,
@@ -133,7 +152,8 @@ async def clinical_query(request: ClinicalQueryRequest):
         )
         hits = hybrid.points
         dense_only = await qdrant_client.query_points(
-            collection_name=QDRANT_COLLECTION, query=dense_vec, using="dense", limit=1, with_payload=False,
+            collection_name=QDRANT_COLLECTION, query=dense_vec, using="dense", limit=1,
+            query_filter=rf, with_payload=False,
         )
         top_similarity = dense_only.points[0].score if dense_only.points else 0.0
     except Exception as e:
@@ -246,7 +266,11 @@ async def list_sources():
                 pl = pt.payload or {}
                 did = pl.get("doc_id", "UNKNOWN")
                 d = docs.setdefault(did, {"doc_id": did, "title": pl.get("title", did),
-                                          "department": pl.get("department"), "chunks": 0, "pages": set()})
+                                          "department": pl.get("department"), "chunks": 0, "pages": set(),
+                                          "version": pl.get("version"), "approval_status": pl.get("approval_status", "approved"),
+                                          "access_level": pl.get("access_level", "general"),
+                                          "effective_date": pl.get("effective_date"), "expiry_date": pl.get("expiry_date"),
+                                          "review_date": pl.get("review_date")})
                 d["chunks"] += 1
                 if pl.get("page_number") is not None:
                     d["pages"].add(pl["page_number"])
@@ -255,7 +279,10 @@ async def list_sources():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Sources listing failure: {str(e)}")
     documents = [{"doc_id": d["doc_id"], "title": d["title"], "department": d["department"],
-                  "chunks": d["chunks"], "pages": sorted(d["pages"])} for d in docs.values()]
+                  "chunks": d["chunks"], "pages": sorted(d["pages"]), "version": d["version"],
+                  "approval_status": d["approval_status"], "access_level": d["access_level"],
+                  "effective_date": d["effective_date"], "expiry_date": d["expiry_date"],
+                  "review_date": d["review_date"]} for d in docs.values()]
     return {"count": len(documents), "documents": documents}
 
 
@@ -266,6 +293,12 @@ async def ingest_document(
     doc_id: str = Form(default=None),
     title: str = Form(default=None),
     department: str = Form(default="General"),
+    version: str = Form(default="1"),
+    effective_date: str = Form(default=None),
+    expiry_date: str = Form(default=None),
+    review_date: str = Form(default=None),
+    approval_status: str = Form(default="approved"),
+    access_level: str = Form(default="general"),
 ):
     """Add a document to the knowledge base from an uploaded file (PDF/TXT/MD)
     or pasted text. Chunks, embeds (dense + sparse), and upserts into Qdrant."""
@@ -284,6 +317,7 @@ async def ingest_document(
 
     did = doc_id or (os.path.splitext(filename)[0] if file is not None else "PASTED-DOC")
     ttl = title or did
+    doc_meta = build_doc_meta(version, effective_date, expiry_date, review_date, approval_status, access_level)
 
     texts = [c[1] for c in chunks]
     try:
@@ -305,13 +339,16 @@ async def ingest_document(
                 id=str(uuid.uuid5(_ID_NS, f"{did}:{idx}")),
                 vector={"dense": vec, "sparse": models.SparseVector(indices=sp["indices"], values=sp["values"])},
                 payload={"doc_id": did, "title": ttl, "department": department,
-                         "page_number": page_no, "paragraph_text": chunk, "is_active": True},
+                         "page_number": page_no, "paragraph_text": chunk, "is_active": True,
+                         **doc_meta},
             ))
         await qdrant_client.upsert(collection_name=QDRANT_COLLECTION, points=points)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ingestion failure: {str(e)}")
 
-    return {"doc_id": did, "title": ttl, "department": department, "chunks_added": len(points)}
+    return {"doc_id": did, "title": ttl, "department": department, "chunks_added": len(points),
+            "approval_status": doc_meta["approval_status"], "access_level": doc_meta["access_level"],
+            "effective_date": doc_meta["effective_date"], "expiry_date": doc_meta["expiry_date"]}
 
 
 @app.delete("/api/v1/source", dependencies=[Depends(require_api_key)])

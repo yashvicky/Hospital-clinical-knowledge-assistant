@@ -34,6 +34,9 @@ def ensure_collection(client: QdrantClient) -> None:
         ("doc_id", PayloadSchemaType.KEYWORD),
         ("department", PayloadSchemaType.KEYWORD),
         ("is_active", PayloadSchemaType.BOOL),
+        ("approval_status", PayloadSchemaType.KEYWORD),
+        ("access_level", PayloadSchemaType.KEYWORD),
+        ("expiry_ts", PayloadSchemaType.INTEGER),
     ]:
         client.create_payload_index(
             collection_name=QDRANT_COLLECTION, field_name=field_name, field_schema=schema_type,

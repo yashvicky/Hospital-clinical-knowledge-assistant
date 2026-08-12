@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from sparse import sparse_encode          # noqa: E402
 from embedding import embed_sync         # noqa: E402
 from qdrant_init import ensure_collection  # noqa: E402
+from metadata import build_doc_meta         # noqa: E402
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "clinical_sops")
@@ -49,7 +50,7 @@ def embed(hc: httpx.Client, text: str) -> list[float]:
     return embed_sync(hc, [text])[0]
 
 
-def build_points(nodes, department: str):
+def build_points(nodes, department: str, doc_meta: dict):
     points = []
     with httpx.Client(base_url=TEI_EMBEDDING_URL, timeout=120.0) as hc:
         for idx, node in enumerate(nodes):
@@ -74,6 +75,7 @@ def build_points(nodes, department: str):
                     "page_number": page_number,
                     "paragraph_text": text,
                     "is_active": True,
+                    **doc_meta,
                 },
             ))
     return points
@@ -83,7 +85,16 @@ def main():
     ap = argparse.ArgumentParser(description="Ingest clinical documents into Qdrant (hybrid).")
     ap.add_argument("--input-dir", required=True, help="Directory of PDF/DOCX/TXT/MD files")
     ap.add_argument("--department", default="General", help="Department tag for these docs")
+    ap.add_argument("--version", default="1", help="Document version label")
+    ap.add_argument("--effective-date", default=None, help="Effective date YYYY-MM-DD")
+    ap.add_argument("--expiry-date", default=None, help="Expiry/superseded date YYYY-MM-DD (omit = no expiry)")
+    ap.add_argument("--review-date", default=None, help="Next review date YYYY-MM-DD")
+    ap.add_argument("--approval-status", default="approved", choices=["approved", "draft", "retired"],
+                    help="Only 'approved' docs are used at query time")
+    ap.add_argument("--access-level", default="general", help="Access tag (e.g. general, physician, pharmacy)")
     args = ap.parse_args()
+    doc_meta = build_doc_meta(args.version, args.effective_date, args.expiry_date,
+                              args.review_date, args.approval_status, args.access_level)
 
     print(f"Reading documents from {args.input_dir} ...")
     documents = SimpleDirectoryReader(args.input_dir).load_data()
@@ -95,7 +106,7 @@ def main():
 
     client = QdrantClient(url=QDRANT_URL)
     ensure_collection(client)
-    points = build_points(nodes, args.department)
+    points = build_points(nodes, args.department, doc_meta)
     if not points:
         print("No non-empty chunks found; nothing to ingest.")
         return

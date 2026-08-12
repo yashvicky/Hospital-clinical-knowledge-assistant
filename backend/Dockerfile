@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py sparse.py embedding.py phi.py normalize.py chunking.py qdrant_init.py seed_corpus.py bootstrap.py ./
+COPY main.py sparse.py embedding.py phi.py normalize.py chunking.py metadata.py qdrant_init.py seed_corpus.py bootstrap.py ./
 
 EXPOSE 8000
 

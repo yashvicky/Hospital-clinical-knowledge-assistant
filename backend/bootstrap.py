@@ -15,6 +15,7 @@ from qdrant_client.models import PointStruct, SparseVector
 from qdrant_init import ensure_collection
 from sparse import sparse_encode
 from embedding import embed_sync
+from metadata import build_doc_meta
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "clinical_sops")
@@ -47,7 +48,8 @@ def main():
             points.append(PointStruct(
                 id=i,
                 vector={"dense": vec, "sparse": SparseVector(indices=sp["indices"], values=sp["values"])},
-                payload={**sop, "is_active": True},
+                payload={**sop, "is_active": True,
+                         **build_doc_meta(effective_date="2026-01-01", approval_status="approved", access_level="general")},
             ))
         qc.upsert(collection_name=QDRANT_COLLECTION, points=points)
     print(f"Seeded {len(SAMPLE_SOPS)} sample SOP chunks (dense + sparse). Bootstrap complete.")

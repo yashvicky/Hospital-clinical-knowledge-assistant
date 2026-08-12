@@ -20,6 +20,7 @@ import main  # noqa: E402
 import mock_tei  # noqa: E402
 import mock_vllm  # noqa: E402
 from sparse import sparse_encode  # noqa: E402
+from metadata import build_doc_meta  # noqa: E402
 from qdrant_client import AsyncQdrantClient, models  # noqa: E402
 import httpx  # noqa: E402
 from asgi_lifespan import LifespanManager  # noqa: E402
@@ -46,7 +47,7 @@ async def main_test():
             id=i,
             vector={"dense": mock_tei.embed_text(s["paragraph_text"]),
                     "sparse": models.SparseVector(indices=sp["indices"], values=sp["values"])},
-            payload={**s, "is_active": True}))
+            payload={**s, "is_active": True, **build_doc_meta(approval_status="approved")}))
     await qc.upsert("clinical_sops", points=pts)
 
     async with LifespanManager(main.app):

@@ -191,3 +191,21 @@ See **[docs/DEPLOY.md](docs/DEPLOY.md)** — Vercel for the UI (dashboard or the
 - Every answer is grounded in retrieved source chunks with page-level citations for clinician verification.
 
 > This is a reference implementation / scaffold. A production clinical deployment requires formal validation, a signed BAA for any hosted component, security review, and clinical sign-off.
+
+
+## Production document management
+
+- **Governance metadata** on every document: `version`, `effective_date`,
+  `expiry_date`, `review_date`, `approval_status` (approved/draft/retired), and
+  `access_level`. Set them in the Manage Documents panel or the ingest CLI.
+- **Freshness + approval filtering:** only `approved`, non-expired documents are
+  ever used to answer — expired or draft content is automatically excluded, so
+  the assistant never cites a retired protocol.
+- **Department & access scoping:** `POST /api/v1/query` accepts `department` and
+  `access_levels` to restrict retrieval per unit/role.
+- **Batch folder ingestion:** `python ingest/ingest_documents.py --input-dir <dir>
+  --department ER --approval-status approved --effective-date 2026-01-01 --expiry-date 2027-01-01`
+  ingests an entire folder of PDFs/DOCX/TXT with LlamaIndex parsing.
+- **Public guidelines fetcher:** `python ingest/fetch_public_guidelines.py`
+  downloads openly-licensed source PDFs (WHO/CDC/StatPearls) into a folder for
+  review before ingestion (see the script header for licensing).
