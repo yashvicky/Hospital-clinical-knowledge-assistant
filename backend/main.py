@@ -35,11 +35,14 @@ from phi import redact_phi
 from normalize import expand_shorthand
 from chunking import build_chunks
 from metadata import build_doc_meta, now_ts
+from seed_corpus import DOCUMENTS as SEED_DOCS
 
 # ---------------------------------------------------------
 # 1. Config & Global Clients
 # ---------------------------------------------------------
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_MODE = os.environ.get("QDRANT_MODE", "server").lower()  # "server" | "embedded"
+EMBED_API_KEY = os.environ.get("EMBED_API_KEY", "").strip()
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "clinical_sops")
 TEI_EMBEDDING_URL = os.environ.get("TEI_EMBEDDING_URL", "http://localhost:8080")
 VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
@@ -62,12 +65,48 @@ llm_client: AsyncOpenAI = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global qdrant_client, embedding_client, llm_client
-    qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
-    embedding_client = httpx.AsyncClient(base_url=TEI_EMBEDDING_URL, timeout=60.0)
+    embed_headers = {"Authorization": f"Bearer {EMBED_API_KEY}"} if EMBED_API_KEY else {}
+    embedding_client = httpx.AsyncClient(base_url=TEI_EMBEDDING_URL, timeout=60.0, headers=embed_headers)
     llm_client = AsyncOpenAI(base_url=VLLM_BASE_URL, api_key=(os.environ.get("VLLM_API_KEY") or "not-needed"))
+    if QDRANT_MODE == "embedded" or QDRANT_URL.strip().lower() in (":memory:", "memory", ""):
+        # Self-contained: in-process Qdrant seeded at startup — no external DB.
+        qdrant_client = AsyncQdrantClient(location=":memory:")
+        await _seed_embedded(qdrant_client)
+    else:
+        qdrant_client = AsyncQdrantClient(url=QDRANT_URL, api_key=(os.environ.get("QDRANT_API_KEY") or None))
     yield
     await qdrant_client.close()
     await embedding_client.aclose()
+
+
+async def _seed_embedded(qc):
+    """Create the collection + seed the sample corpus into an in-process Qdrant."""
+    dim = int(os.environ.get("EMBEDDING_DIM", "1024"))
+    await qc.create_collection(
+        collection_name=QDRANT_COLLECTION,
+        vectors_config={"dense": models.VectorParams(size=dim, distance=models.Distance.COSINE)},
+        sparse_vectors_config={"sparse": models.SparseVectorParams()},
+    )
+    for field, schema in [("doc_id", models.PayloadSchemaType.KEYWORD),
+                          ("department", models.PayloadSchemaType.KEYWORD),
+                          ("is_active", models.PayloadSchemaType.BOOL),
+                          ("approval_status", models.PayloadSchemaType.KEYWORD),
+                          ("access_level", models.PayloadSchemaType.KEYWORD),
+                          ("expiry_ts", models.PayloadSchemaType.INTEGER)]:
+        try:
+            await qc.create_payload_index(collection_name=QDRANT_COLLECTION, field_name=field, field_schema=schema)
+        except Exception:
+            pass
+    texts = [d["paragraph_text"] for d in SEED_DOCS]
+    vecs = await embed_async(embedding_client, texts)
+    points = []
+    for i, (d, vec) in enumerate(zip(SEED_DOCS, vecs), start=1):
+        sp = sparse_encode(d["paragraph_text"])
+        points.append(models.PointStruct(
+            id=i, vector={"dense": vec, "sparse": models.SparseVector(indices=sp["indices"], values=sp["values"])},
+            payload={**d, "is_active": True, **build_doc_meta(effective_date="2026-01-01")},
+        ))
+    await qc.upsert(collection_name=QDRANT_COLLECTION, points=points)
 
 
 app = FastAPI(

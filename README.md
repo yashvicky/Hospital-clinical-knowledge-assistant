@@ -19,6 +19,8 @@ First run downloads the open-weight models (~5 GB) and seeds sample protocols.
 Snappier on a small machine: `LLM_MODEL=qwen2.5:3b docker compose -f docker-compose.demo.yml up`.
 Full demo + video walkthrough: **[docs/DEMO.md](docs/DEMO.md)**.
 
+Want a **public link anyone can open on any device** (Vercel + free host + SiliconFlow / Qwen2.5 + BGE-M3)? See **[docs/DEPLOY-PUBLIC.md](docs/DEPLOY-PUBLIC.md)**.
+
 ## Architecture
 
 ```
