@@ -6,6 +6,19 @@ A HIPAA-oriented, fully self-hosted **Retrieval-Augmented Generation (RAG)** pla
 
 > Retrieval and generation are kept strictly separate so the system stays sub-3-second, cost-efficient, and keeps clinical documents inside the hospital network. No third-party embedding or LLM API is required.
 
+## ▶️ Try it in one command (no keys, no accounts)
+
+Fully self-contained — Qdrant + **Qwen2.5** (LLM) + **BGE-M3** (embeddings) run
+locally in Docker via Ollama. You need only Docker:
+
+```bash
+docker compose -f docker-compose.demo.yml up      # then open http://localhost:3000
+```
+
+First run downloads the open-weight models (~5 GB) and seeds sample protocols.
+Snappier on a small machine: `LLM_MODEL=qwen2.5:3b docker compose -f docker-compose.demo.yml up`.
+Full demo + video walkthrough: **[docs/DEMO.md](docs/DEMO.md)**.
+
 ## Architecture
 
 ```

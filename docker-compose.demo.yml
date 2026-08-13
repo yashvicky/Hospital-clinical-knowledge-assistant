@@ -1,0 +1,116 @@
+# ============================================================================
+# ONE-COMMAND DEMO — no API keys, no accounts, no host installs (just Docker).
+# Chinese open-weight models: Qwen2.5 (LLM) + BGE-M3 (embeddings), both run
+# locally inside Docker via Ollama. Everything is self-contained.
+#
+#     docker compose -f docker-compose.demo.yml up
+#     # first run downloads the models (~5 GB) into a cached volume
+#     # then open  http://localhost:3000
+#
+# Snappier / low-RAM machine:   LLM_MODEL=qwen2.5:3b docker compose -f docker-compose.demo.yml up
+# Have an NVIDIA GPU? uncomment the `deploy:` block under the `ollama` service.
+# ============================================================================
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: clinical_qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: clinical_ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    # --- NVIDIA GPU (optional, makes generation fast): uncomment ---
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # One-shot: pull the Chinese open-weight models into the Ollama volume.
+  model-init:
+    image: ollama/ollama:latest
+    container_name: clinical_model_init
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "echo 'waiting for Ollama...';
+       until ollama list >/dev/null 2>&1; do sleep 2; done;
+       echo 'pulling models (first run downloads several GB)...';
+       ollama pull ${LLM_MODEL:-qwen2.5:7b};
+       ollama pull ${EMBED_MODEL:-bge-m3};
+       echo 'models ready.'"
+    restart: "no"
+
+  # One-shot: create the collection + seed sample SOPs (embeds via Ollama).
+  init:
+    build:
+      context: ./backend
+    container_name: clinical_init
+    command: ["python", "bootstrap.py"]
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - EMBED_BACKEND=openai
+      - EMBED_MODEL=${EMBED_MODEL:-bge-m3}
+      - TEI_EMBEDDING_URL=http://ollama:11434
+      - EMBEDDING_DIM=1024
+    depends_on:
+      qdrant:
+        condition: service_started
+      model-init:
+        condition: service_completed_successfully
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: clinical_backend
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=clinical_sops
+      - EMBED_BACKEND=openai
+      - EMBED_MODEL=${EMBED_MODEL:-bge-m3}
+      - TEI_EMBEDDING_URL=http://ollama:11434
+      - VLLM_BASE_URL=http://ollama:11434/v1
+      - VLLM_MODEL_NAME=${LLM_MODEL:-qwen2.5:7b}
+      - VLLM_API_KEY=ollama
+      - CONF_MIN=0.45
+      - CONF_HIGH=0.6
+      - MAX_TOKENS=400
+    ports:
+      - "8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_started
+      model-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1/query}
+    container_name: clinical_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  qdrant_data:
+  ollama_models:
